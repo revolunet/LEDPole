@@ -76,7 +76,6 @@ void BlendAnimUpdate(const AnimationParam &param)
     strip.SetPixelColor(param.index, updatedColor);
 }
 
-
 const String HTML_PAGE = "<h1>NodeMCU light</h1><a href='https://88wzy9xlnj.codesandbox.io/'>control panel</a>";
 
 // allume la ligne `rowIndex` avec la couleur `color`
@@ -133,14 +132,14 @@ void colorize(RgbColor color)
 {
     for (int index = 0; index < RowCount; index += 1)
     {
-      RgbColor color2 = color;
-      color2.Darken(index * 5);
-      fadeRow(index, 300, color2);
+        RgbColor color2 = color;
+        color2.Darken(index * 5);
+        fadeRow(index, 300, color2);
     }
 }
 
 // anime toutes les leds vers une couleur
-void fadeAll(RgbColor color, uint32_t duration=300)
+void fadeAll(RgbColor color, uint32_t duration = 300)
 {
     for (uint8_t pixel = 0; pixel < strip.PixelCount(); pixel += 1)
     {
@@ -197,32 +196,34 @@ void setup()
     {
         delay(100);
         Serial.print(".");
-        counter+=1;
+        counter += 1;
     }
-    
+
     // WiFi OK
-    if (counter < 50) {
-      Serial.println("");
-      Serial.print("Connected to ");
-      Serial.println(ssid);
-      Serial.print("IP address: ");
-      Serial.println(WiFi.localIP());
-      strip.SetBrightness(100);
-      colorize(RgbColor(150, 90, 0));
-    } else {
-      Serial.println("");
-      Serial.print("NOT connected to WiFi");
-      Serial.println(ssid);
-      strip.SetBrightness(50);
-      colorize(RgbColor(255, 0, 0));
+    if (counter < 50)
+    {
+        Serial.println("");
+        Serial.print("Connected to ");
+        Serial.println(ssid);
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
+        strip.SetBrightness(100);
+        colorize(RgbColor(150, 90, 0));
+    }
+    else
+    {
+        Serial.println("");
+        Serial.print("NOT connected to WiFi");
+        Serial.println(ssid);
+        strip.SetBrightness(50);
+        colorize(RgbColor(255, 0, 0));
     }
 
     strip.Show();
-    
+
     server.on("/", handleRequest);
     server.begin();
     Serial.println("HTTP server started");
-    
 }
 
 void loop()
