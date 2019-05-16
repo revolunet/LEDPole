@@ -10,6 +10,12 @@ Remote control : https://codesandbox.io/s/88wzy9xlnj
 - NodeMCU Board
 - ws2812b LED stripes
 
+## Requirements
+
+- VSCode with platform.io and Expressif 8266 2.1.1+
+- NodeMCU Board
+- ws2812b LED stripes
+
 ## Usage
 
 Edit WiFi settings in main.cpp then upload to your board
