@@ -27,11 +27,19 @@ const RgbColor black = RgbColor(0, 0, 0);
 const RgbColor white = RgbColor(255, 255, 255);
 const RgbColor red = RgbColor(255, 0, 0);
 
+String ip = "0.0.0.0";
+
+// BOOT, IDLE, GYRO
+String status = "BOOT";
+
 // With esp8266, no need to specify the port - the NeoEsp8266Dma800KbpsMethod only supports the RDX0/GPIO3 pin
 // https://github.com/Makuna/NeoPixelBus/wiki/ESP8266-NeoMethods
-NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount);
+NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod>
+    strip(PixelCount);
 
 NeoPixelAnimator animations(PixelCount);
+
+NeoGamma<NeoGammaTableMethod> colorGamma; // for any fade animations, best to correct gamma
 
 WiFiUDP ntpUDP;
 
@@ -50,6 +58,28 @@ struct ColorAnimationState
 
 // one entry per pixel to match the animation timing manager
 ColorAnimationState colorAnimationState[PixelCount];
+
+// ---- gyro
+
+// fade speed
+const uint16_t GyroPixelFadeDuration = 500;
+// move speed
+const uint16_t GyroNextPixelMoveDuration = 700 / PixelPerRow;
+// brightness
+const float gyroIntensity = 0.5f;
+
+struct GyroAnimationState
+{
+    RgbColor StartingColor;
+    RgbColor EndingColor;
+    uint16_t IndexPixel; // which pixel this animation is effecting
+};
+
+GyroAnimationState animationState[PixelPerRow / 5 * 2 + 1];
+uint16_t frontPixel = 0; // the front of the loop
+RgbColor frontColor;     // the color at the front of the loop
+
+//--- end gyro
 
 void SetRandomSeed()
 {
@@ -158,6 +188,65 @@ void fadeAll(RgbColor color, uint32_t duration = 300)
     }
 }
 
+// retourne l'index d'un pixel à partir d'un `rowIndex` et `colIndex`
+// en inversant une ligne sur deux (assemblage zig-zag)
+uint8_t getNormalizedPixelIndex(uint8_t rowIndex, uint8_t colIndex)
+{
+    const uint8_t offset = rowIndex % 2 == 1 ? PixelPerRow - colIndex - 1 : colIndex;
+    return (rowIndex * PixelPerRow) + offset;
+}
+
+void FadeOutAnimUpdate(const AnimationParam &param)
+{
+    // this gets called for each animation on every time step
+    // progress will start at 0.0 and end at 1.0
+    // we use the blend function on the RgbColor to mix
+    // color based on the progress given to us in the animation
+    RgbColor updatedColor = RgbColor::LinearBlend(
+        animationState[param.index].StartingColor,
+        animationState[param.index].EndingColor,
+        param.progress);
+    // apply the color to the strip
+    for (uint8_t row = 0; row < RowCount; row++)
+    {
+        strip.SetPixelColor(getNormalizedPixelIndex(row, animationState[param.index].IndexPixel),
+                            colorGamma.Correct(updatedColor));
+    }
+}
+
+void GyroLoopAnimUpdate(const AnimationParam &param)
+{
+    // wait for this animation to complete,
+    // we are using it as a timer of sorts
+    if (param.state == AnimationState_Completed)
+    {
+        // done, time to restart this position tracking animation/timer
+        animations.RestartAnimation(param.index);
+
+        // pick the next pixel inline to start animating
+        //
+        frontPixel = (frontPixel + 1) % PixelPerRow; // increment and wrap
+        if (frontPixel == 0)
+        {
+            // we looped, lets pick a new front color
+            frontColor = HslColor(random(360) / 360.0f, 1.0f, gyroIntensity);
+        }
+
+        uint16_t indexAnim;
+        // do we have an animation available to use to animate the next front pixel?
+        // if you see skipping, then either you are going to fast or need to increase
+        // the number of animation channels
+        if (animations.NextAvailableAnimation(&indexAnim, 1))
+        {
+            animationState[indexAnim].StartingColor = frontColor;
+            animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
+            animationState[indexAnim].IndexPixel = frontPixel;
+
+            animations.StartAnimation(indexAnim, GyroPixelFadeDuration, FadeOutAnimUpdate);
+        }
+    }
+}
+
 void handleRequest()
 {
     if (server.hasArg("color"))
@@ -187,7 +276,17 @@ void handleRequest()
         strip.SetBrightness(255);
         fadeAll(white);
     }
-    server.send(200, "text/html", HTML_PAGE);
+    else if (server.hasArg("mode"))
+    {
+        animations.StopAnimation(0);
+        status = server.arg("mode");
+        if (status == "GYRO")
+        {
+            animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
+        }
+    }
+    String JSON_PAGE = "{\"control\":\"https://88wzy9xlnj.codesandbox.io\", \"ip\":\"" + (String)(ip) + "\", \"status\":\"" + status + "\"}";
+    server.send(200, "application/json", JSON_PAGE);
 }
 
 long int lastEvent;
@@ -203,6 +302,10 @@ void setup()
 
     Serial.print("Try to connect WiFi");
     WiFi.begin(ssid, password);
+
+    strip.SetBrightness(10);
+    colorize(RgbColor(150, 90, 0));
+    strip.Show();
 
     // Wait WiFi
     uint32_t counter = 0;
@@ -221,9 +324,10 @@ void setup()
         Serial.print("Connected to ");
         Serial.println(ssid);
         Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
+        ip = WiFi.localIP().toString();
+        Serial.println(ip);
         strip.SetBrightness(100);
-        colorize(RgbColor(150, 90, 0));
+        colorize(RgbColor(0, 150, 0));
     }
     else
     {
@@ -239,6 +343,8 @@ void setup()
     server.on("/", handleRequest);
     server.begin();
     Serial.println("HTTP server started");
+    //currentStatus = IDLE;
+    status = "IDLE";
     // timeClient.begin();
     // lastEvent = timeClient.getEpochTime();
 }
@@ -257,6 +363,15 @@ void setup()
 
 void loop()
 {
+    if (status == "IDLE")
+    {
+        animations.UpdateAnimations();
+    }
+    else if (status == "GYRO")
+    {
+        Serial.print("GYRO");
+        //animations.UpdateAnimations();
+    }
     animations.UpdateAnimations();
 
     // timeClient.update();
