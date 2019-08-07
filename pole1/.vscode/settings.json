@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.env.osx": {
+        "PATH": "/Users/juju/.platformio/penv/bin:/Users/juju/.platformio/penv:/Users/juju/.cargo/bin:/usr/local/lib/ruby/gems/2.5.0/bin:/usr/local/opt/ruby/bin:/Users/juju/.yarn/bin:/Users/juju/.nvm/versions/node/v11.15.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/usr/local/go/bin",
+        "PLATFORMIO_CALLER": "vscode"
+    }
+}
