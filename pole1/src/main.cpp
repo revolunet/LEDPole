@@ -29,7 +29,7 @@ const RgbColor red = RgbColor(255, 0, 0);
 
 String ip = "0.0.0.0";
 
-// BOOT, IDLE, GYRO
+// BOOT, IDLE, GYRO, VERTICAL
 String status = "BOOT";
 
 // With esp8266, no need to specify the port - the NeoEsp8266Dma800KbpsMethod only supports the RDX0/GPIO3 pin
@@ -57,7 +57,7 @@ struct ColorAnimationState
 };
 
 // one entry per pixel to match the animation timing manager
-ColorAnimationState colorAnimationState[PixelCount];
+ColorAnimationState colorAnimationState[PixelCount * 2];
 
 // ---- gyro
 
@@ -66,7 +66,7 @@ const uint16_t GyroPixelFadeDuration = 500;
 // move speed
 const uint16_t GyroNextPixelMoveDuration = 700 / PixelPerRow;
 // brightness
-const float gyroIntensity = 0.5f;
+//const float gyroIntensity = 0.5f;
 
 struct GyroAnimationState
 {
@@ -154,13 +154,21 @@ void FadeColorUpdate(const AnimationParam &param)
     strip.SetPixelColor(param.index, updatedColor);
 }
 
+// retourne l'index d'un pixel à partir d'un `rowIndex` et `colIndex`
+// en inversant une ligne sur deux (assemblage zig-zag)
+uint8_t getNormalizedPixelIndex(uint8_t rowIndex, uint8_t colIndex)
+{
+    const uint8_t offset = rowIndex % 2 == 1 ? PixelPerRow - colIndex - 1 : colIndex;
+    return (rowIndex * PixelPerRow) + offset;
+}
+
 // fade a single row
 void fadeRow(uint8_t rowIndex, uint16_t duration, RgbColor color)
 {
     for (int count = 0; count < PixelPerRow; count += 1)
     {
-        uint8_t pixel = getPixelIndex(rowIndex, count);
-        colorAnimationState[pixel].StartingColor = black;
+        uint8_t pixel = getNormalizedPixelIndex(rowIndex, count);
+        colorAnimationState[pixel].StartingColor = strip.GetPixelColor(pixel);
         colorAnimationState[pixel].EndingColor = color;
         animations.StartAnimation(pixel, duration, FadeColorUpdate);
     }
@@ -171,9 +179,9 @@ void colorize(RgbColor color)
 {
     for (int index = 0; index < RowCount; index += 1)
     {
-        RgbColor color2 = color;
-        color2.Darken(index * 5);
-        fadeRow(index, 300, color2);
+        //RgbColor color2 = color;
+        //color2.Darken(index * 5);
+        fadeRow(index, 300, color);
     }
 }
 
@@ -188,15 +196,7 @@ void fadeAll(RgbColor color, uint32_t duration = 300)
     }
 }
 
-// retourne l'index d'un pixel à partir d'un `rowIndex` et `colIndex`
-// en inversant une ligne sur deux (assemblage zig-zag)
-uint8_t getNormalizedPixelIndex(uint8_t rowIndex, uint8_t colIndex)
-{
-    const uint8_t offset = rowIndex % 2 == 1 ? PixelPerRow - colIndex - 1 : colIndex;
-    return (rowIndex * PixelPerRow) + offset;
-}
-
-void FadeOutAnimUpdate(const AnimationParam &param)
+void GyroColumnFadeOut(const AnimationParam &param)
 {
     // this gets called for each animation on every time step
     // progress will start at 0.0 and end at 1.0
@@ -229,7 +229,7 @@ void GyroLoopAnimUpdate(const AnimationParam &param)
         if (frontPixel == 0)
         {
             // we looped, lets pick a new front color
-            frontColor = HslColor(random(360) / 360.0f, 1.0f, gyroIntensity);
+            frontColor = HslColor(random(360) / 360.0f, 1.0f, 0.5f);
         }
 
         uint16_t indexAnim;
@@ -242,8 +242,81 @@ void GyroLoopAnimUpdate(const AnimationParam &param)
             animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
             animationState[indexAnim].IndexPixel = frontPixel;
 
+            animations.StartAnimation(indexAnim, GyroPixelFadeDuration, GyroColumnFadeOut);
+        }
+    }
+}
+
+RgbColor rowColor;
+uint16_t verticalRowIndex = 1;
+int verticalMoveDuration = 100;
+int verticalFadeDuration = 500;
+
+void VerticalLoopAnimUpdate(const AnimationParam &param)
+{
+    // wait for this animation to complete,
+    // we are using it as a timer of sorts
+    if (param.state == AnimationState_Completed)
+    {
+
+        // done, time to restart this position tracking animation/timer
+        animations.RestartAnimation(param.index);
+
+        // pick the next pixel inline to start animating
+        //
+
+        if (verticalRowIndex == 0)
+        {
+            // we looped, lets pick a new front color
+            rowColor = HslColor(random(360) / 360.0f, 1.0f, 0.5f);
+        }
+
+        //strip.SetPixelColor(getNormalizedPixelIndex(verticalRowIndex, 5), RgbColor(255, 0, 0));
+        // if (param.index % 2 == 0)
+        // {
+        int previousRowIndex = ((verticalRowIndex == 0) && RowCount) || (verticalRowIndex - 1);
+
+        //  fadeRow(previousRowIndex, verticalFadeDuration, black);
+        allumeLigne(verticalRowIndex, rowColor);
+        for (uint8_t i = verticalRowIndex; i >= max(0, verticalRowIndex - 5); i -= 1)
+        {
+            //RgbColor rowColor2 = rowColor;
+            rowColor.Darken(10 * (5 - (i + 1)));
+            allumeLigne(verticalRowIndex - i - 1, rowColor);
+        }
+        /*    allumeLigne(verticalRowIndex, rowColor.Darken());*/
+
+        verticalRowIndex = (verticalRowIndex + 1) % RowCount; // increment and wrap
+
+        // }
+        /*
+        if (animations.NextAvailableAnimation(&indexAnim, 1))
+        {
+
+            animationState[indexAnim].StartingColor = strip.GetPixelColor(previousPixel);
+            animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
+            animationState[indexAnim].IndexPixel = previousPixel;
+
+            animations.StartAnimation(indexAnim, GyroPixelFadeDuration, FadeOutAnimUpdate);
+        } */
+        //uint16_t indexAnim;
+        // do we have an animation available to use to animate the next front pixel?
+        // if you see skipping, then either you are going to fast or need to increase
+        // the number of animation channels
+        /*
+            for (int count = 0; count < RowCount; count += 1)
+        {
+            fadeRow(0, verticalFadeDuration, frontColor)
+        }
+        if (animations.NextAvailableAnimation(&indexAnim, 1))
+        {
+            animationState[indexAnim].StartingColor = frontColor;
+            animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
+            animationState[indexAnim].IndexPixel = frontPixel;
+
             animations.StartAnimation(indexAnim, GyroPixelFadeDuration, FadeOutAnimUpdate);
         }
+        */
     }
 }
 
@@ -265,6 +338,11 @@ void handleRequest()
     }
     else if (server.hasArg("off"))
     {
+        animations.StopAnimation(0);
+        animations.StopAnimation(1);
+        frontPixel = 0;
+        verticalRowIndex = 0;
+        status = "IDLE";
         fadeAll(black, 500);
     }
     else if (server.hasArg("brightness"))
@@ -279,10 +357,19 @@ void handleRequest()
     else if (server.hasArg("mode"))
     {
         animations.StopAnimation(0);
+        animations.StopAnimation(1);
+        //strip.ClearTo(black);
+        frontPixel = 0;
+        verticalRowIndex = 0;
+
         status = server.arg("mode");
         if (status == "GYRO")
         {
             animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
+        }
+        else if (status == "VERTICAL")
+        {
+            animations.StartAnimation(0, verticalMoveDuration, VerticalLoopAnimUpdate);
         }
     }
     String JSON_PAGE = "{\"control\":\"https://88wzy9xlnj.codesandbox.io\", \"ip\":\"" + (String)(ip) + "\", \"status\":\"" + status + "\"}";
@@ -302,10 +389,6 @@ void setup()
 
     Serial.print("Try to connect WiFi");
     WiFi.begin(ssid, password);
-
-    strip.SetBrightness(10);
-    colorize(RgbColor(150, 90, 0));
-    strip.Show();
 
     // Wait WiFi
     uint32_t counter = 0;
@@ -365,19 +448,20 @@ void loop()
 {
     if (status == "IDLE")
     {
+        Serial.print("IDLE");
         animations.UpdateAnimations();
     }
     else if (status == "GYRO")
     {
         Serial.print("GYRO");
-        //animations.UpdateAnimations();
+        animations.UpdateAnimations();
     }
-    animations.UpdateAnimations();
+    else if (status == "VERTICAL")
+    {
+        Serial.print("VERTICAL");
+        animations.UpdateAnimations();
+    }
 
-    // timeClient.update();
-
-    //Serial.println(timeClient.getFormattedTime());
-    //timeSpent();
     server.handleClient();
     strip.Show();
 }
