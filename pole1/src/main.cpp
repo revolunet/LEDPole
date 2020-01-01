@@ -397,7 +397,6 @@ void setup()
     Serial.begin(115200);
     timeClient.begin();
 
-    Serial.println("");
     Serial.print("Starting setup");
     Serial.println("");
     SetRandomSeed();
@@ -423,17 +422,19 @@ void setup()
     if (counter < 100)
     {
         Serial.println("");
+        Serial.println("");
         Serial.print("Connected to ");
         Serial.println(ssid);
         Serial.print("IP address: ");
         ip = WiFi.localIP().toString();
         Serial.println(ip);
         Serial.println("");
-        strip.SetBrightness(100);
-        colorize(RgbColor(0, 150, 0));
+        //strip.SetBrightness(100);
+        //colorize(RgbColor(0, 150, 0));
     }
     else
     {
+        Serial.println("");
         Serial.println("");
         Serial.print("NOT connected to WiFi ");
         Serial.println(ssid);
@@ -449,6 +450,7 @@ void setup()
     Serial.println("HTTP server started");
     //currentStatus = IDLE;
     status = "IDLE";
+
     // timeClient.begin();
     // lastEvent = timeClient.getEpochTime();
 }
@@ -465,9 +467,11 @@ void setup()
 //     return timeSpent;
 // }
 
-uint lastNtpUpdate = 0;
+//uint lastNtpUpdate = 0;
 uint ntpDelay = 60000;
 uint lastElapsed = 0;
+
+uint currentHour = 0;
 
 void loop()
 {
@@ -478,29 +482,35 @@ void loop()
         {
             Serial.print("Updating NTP");
             timeClient.update();
-            unsigned long epochTime = timeClient.getEpochTime();
+            // unsigned long epochTime = timeClient.getEpochTime();
             // time_t local, utc;
             //utc = epochTime;
 
-            Serial.print(epochTime); // 29258
+            //            Serial.print(epochTime); // 29258
 
-            lastNtpUpdate = epochTime * 1000;
+            // lastNtpUpdate = epochTime * 1000;
             lastElapsed = elapsed;
 
-            uint currentHour = hour(epochTime);
+            currentHour = timeClient.getHours();
 
+            /*
             Serial.print("");
-            Serial.print(currentHour);
-            Serial.print("");
+            Serial.println(timeClient.getFormattedTime());
+            Serial.print("--");
+            Serial.println(timeClient.getHours());
+            Serial.print("--");
+            Serial.println(status);
+            Serial.print("--");
+            */
 
             // if time to switch on, start anim during 1 hour
             //int Myhour = hour(epochTime);
 
-            /*    if (status == "IDLE")
+            if (status == "IDLE" && currentHour == 7)
             {
-                status = "WAKEUP";
+                status = "GYRO";
                 animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
-            }*/
+            }
 
             // Then convert the UTC UNIX timestamp to local time
             //TimeChangeRule usEDT = {"EDT", Second, Sun, Mar, 2, -300}; //UTC - 5 hours - change this as needed
@@ -514,7 +524,7 @@ void loop()
     }
     else // attempt to connect to wifi again if disconnected
     {
-        Serial.print("Connecting wifi....");
+        Serial.print("Reconnecting wifi....");
         WiFi.begin(ssid, password);
 
         delay(1000);
