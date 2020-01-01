@@ -8,6 +8,10 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+#include <Time.h>
+#include <TimeLib.h>
+#include <Timezone.h>
+
 // replace with your wifi credentials
 const char *ssid = "Livebox-taiti";
 const char *password = "Camillou33";
@@ -29,7 +33,7 @@ const RgbColor red = RgbColor(255, 0, 0);
 
 String ip = "0.0.0.0";
 
-// BOOT, IDLE, GYRO, VERTICAL
+// BOOT, IDLE, GYRO, VERTICAL, WAKEUP
 String status = "BOOT";
 
 // With esp8266, no need to specify the port - the NeoEsp8266Dma800KbpsMethod only supports the RDX0/GPIO3 pin
@@ -41,12 +45,12 @@ NeoPixelAnimator animations(PixelCount);
 
 NeoGamma<NeoGammaTableMethod> colorGamma; // for any fade animations, best to correct gamma
 
-WiFiUDP ntpUDP;
+//WiFiUDP ntpUDP;
 
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
-NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
+//NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
 
 // what is stored for state is specific to the need, in this case, the colors.
 // Basically what ever you need inside the animation update function
@@ -80,6 +84,15 @@ uint16_t frontPixel = 0; // the front of the loop
 RgbColor frontColor;     // the color at the front of the loop
 
 //--- end gyro
+
+// Define NTP properties
+#define NTP_OFFSET 60 * 60                // In seconds
+#define NTP_INTERVAL 60 * 1000            // In miliseconds
+#define NTP_ADDRESS "europe.pool.ntp.org" // change this to whatever pool is closest (see ntp.org)
+
+// Set up the NTP UDP client
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 void SetRandomSeed()
 {
@@ -381,27 +394,33 @@ long int _now = 0;
 
 void setup()
 {
+    Serial.begin(115200);
+    timeClient.begin();
 
+    Serial.println("");
     Serial.print("Starting setup");
+    Serial.println("");
     SetRandomSeed();
     strip.Begin();
     strip.Show();
 
+    Serial.println("");
     Serial.print("Try to connect WiFi");
+    Serial.println("");
+
     WiFi.begin(ssid, password);
 
     // Wait WiFi
     uint32_t counter = 0;
-    while (counter < 50 && WiFi.status() != WL_CONNECTED)
+    while (counter < 100 && WiFi.status() != WL_CONNECTED)
     {
-        delay(100);
-
+        delay(50);
         Serial.print(".");
         counter += 1;
     }
 
     // WiFi OK
-    if (counter < 50)
+    if (counter < 100)
     {
         Serial.println("");
         Serial.print("Connected to ");
@@ -409,14 +428,16 @@ void setup()
         Serial.print("IP address: ");
         ip = WiFi.localIP().toString();
         Serial.println(ip);
+        Serial.println("");
         strip.SetBrightness(100);
         colorize(RgbColor(0, 150, 0));
     }
     else
     {
         Serial.println("");
-        Serial.print("NOT connected to WiFi");
+        Serial.print("NOT connected to WiFi ");
         Serial.println(ssid);
+        Serial.println("");
         strip.SetBrightness(10);
         colorize(RgbColor(255, 0, 0));
     }
@@ -444,21 +465,73 @@ void setup()
 //     return timeSpent;
 // }
 
+uint lastNtpUpdate = 0;
+uint ntpDelay = 60000;
+uint lastElapsed = 0;
+
 void loop()
 {
+    if (WiFi.status() == WL_CONNECTED) //Check WiFi connection status
+    {
+        unsigned long elapsed = millis();
+        if (lastElapsed == 0 || elapsed - lastElapsed > (ntpDelay))
+        {
+            Serial.print("Updating NTP");
+            timeClient.update();
+            unsigned long epochTime = timeClient.getEpochTime();
+            // time_t local, utc;
+            //utc = epochTime;
+
+            Serial.print(epochTime); // 29258
+
+            lastNtpUpdate = epochTime * 1000;
+            lastElapsed = elapsed;
+
+            uint currentHour = hour(epochTime);
+
+            Serial.print("");
+            Serial.print(currentHour);
+            Serial.print("");
+
+            // if time to switch on, start anim during 1 hour
+            //int Myhour = hour(epochTime);
+
+            /*    if (status == "IDLE")
+            {
+                status = "WAKEUP";
+                animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
+            }*/
+
+            // Then convert the UTC UNIX timestamp to local time
+            //TimeChangeRule usEDT = {"EDT", Second, Sun, Mar, 2, -300}; //UTC - 5 hours - change this as needed
+            //TimeChangeRule usEST = {"EST", First, Sun, Nov, 2, -360};  //UTC - 6 hours - change this as needed
+            //Timezone usEast usEastern(usEDT, usEST);
+            //local = usEastern.toLocal(utc);
+
+            //1649353270
+            //1577902344
+        }
+    }
+    else // attempt to connect to wifi again if disconnected
+    {
+        Serial.print("Connecting wifi....");
+        WiFi.begin(ssid, password);
+
+        delay(1000);
+    }
     if (status == "IDLE")
     {
-        Serial.print("IDLE");
+        //Serial.print("IDLE");
         animations.UpdateAnimations();
     }
     else if (status == "GYRO")
     {
-        Serial.print("GYRO");
+        //Serial.print("GYRO");
         animations.UpdateAnimations();
     }
     else if (status == "VERTICAL")
     {
-        Serial.print("VERTICAL");
+        //Serial.print("VERTICAL");
         animations.UpdateAnimations();
     }
 
