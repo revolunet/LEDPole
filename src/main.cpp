@@ -14,7 +14,7 @@
 
 // replace with your wifi credentials
 const char *ssid = "Livebox-taiti";
-const char *password = "Camillou33";
+const char *password = "-----";
 
 // instantiate server at port 80 (http port)
 ESP8266WebServer server(80);
@@ -36,6 +36,15 @@ String ip = "0.0.0.0";
 // BOOT, IDLE, GYRO, VERTICAL, WAKEUP
 String status = "BOOT";
 
+// Define NTP properties
+#define NTP_OFFSET 60 * 60                // In seconds
+#define NTP_INTERVAL 60 * 1000            // In miliseconds
+#define NTP_ADDRESS "europe.pool.ntp.org" // change this to whatever pool is closest (see ntp.org)
+
+// Set up the NTP UDP client
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
+
 // With esp8266, no need to specify the port - the NeoEsp8266Dma800KbpsMethod only supports the RDX0/GPIO3 pin
 // https://github.com/Makuna/NeoPixelBus/wiki/ESP8266-NeoMethods
 NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod>
@@ -45,15 +54,7 @@ NeoPixelAnimator animations(PixelCount);
 
 NeoGamma<NeoGammaTableMethod> colorGamma; // for any fade animations, best to correct gamma
 
-//WiFiUDP ntpUDP;
-
-// You can specify the time server pool and the offset (in seconds, can be
-// changed later with setTimeOffset() ). Additionaly you can specify the
-// update interval (in milliseconds, can be changed using setUpdateInterval() ).
-//NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
-
-// what is stored for state is specific to the need, in this case, the colors.
-// Basically what ever you need inside the animation update function
+// keep state for Color Animation
 struct ColorAnimationState
 {
     RgbColor StartingColor;
@@ -63,14 +64,12 @@ struct ColorAnimationState
 // one entry per pixel to match the animation timing manager
 ColorAnimationState colorAnimationState[PixelCount * 2];
 
-// ---- gyro
+// ---- gyro anim settings
 
 // fade speed
 const uint16_t GyroPixelFadeDuration = 500;
 // move speed
 const uint16_t GyroNextPixelMoveDuration = 700 / PixelPerRow;
-// brightness
-//const float gyroIntensity = 0.5f;
 
 struct GyroAnimationState
 {
@@ -84,15 +83,6 @@ uint16_t frontPixel = 0; // the front of the loop
 RgbColor frontColor;     // the color at the front of the loop
 
 //--- end gyro
-
-// Define NTP properties
-#define NTP_OFFSET 60 * 60                // In seconds
-#define NTP_INTERVAL 60 * 1000            // In miliseconds
-#define NTP_ADDRESS "europe.pool.ntp.org" // change this to whatever pool is closest (see ntp.org)
-
-// Set up the NTP UDP client
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 void SetRandomSeed()
 {
@@ -276,17 +266,12 @@ void VerticalLoopAnimUpdate(const AnimationParam &param)
         animations.RestartAnimation(param.index);
 
         // pick the next pixel inline to start animating
-        //
-
         if (verticalRowIndex == 0)
         {
             // we looped, lets pick a new front color
             rowColor = HslColor(random(360) / 360.0f, 1.0f, 0.5f);
         }
 
-        //strip.SetPixelColor(getNormalizedPixelIndex(verticalRowIndex, 5), RgbColor(255, 0, 0));
-        // if (param.index % 2 == 0)
-        // {
         int previousRowIndex = ((verticalRowIndex == 0) && RowCount) || (verticalRowIndex - 1);
 
         //  fadeRow(previousRowIndex, verticalFadeDuration, black);
@@ -297,39 +282,7 @@ void VerticalLoopAnimUpdate(const AnimationParam &param)
             rowColor.Darken(10 * (5 - (i + 1)));
             allumeLigne(verticalRowIndex - i - 1, rowColor);
         }
-        /*    allumeLigne(verticalRowIndex, rowColor.Darken());*/
-
         verticalRowIndex = (verticalRowIndex + 1) % RowCount; // increment and wrap
-
-        // }
-        /*
-        if (animations.NextAvailableAnimation(&indexAnim, 1))
-        {
-
-            animationState[indexAnim].StartingColor = strip.GetPixelColor(previousPixel);
-            animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
-            animationState[indexAnim].IndexPixel = previousPixel;
-
-            animations.StartAnimation(indexAnim, GyroPixelFadeDuration, FadeOutAnimUpdate);
-        } */
-        //uint16_t indexAnim;
-        // do we have an animation available to use to animate the next front pixel?
-        // if you see skipping, then either you are going to fast or need to increase
-        // the number of animation channels
-        /*
-            for (int count = 0; count < RowCount; count += 1)
-        {
-            fadeRow(0, verticalFadeDuration, frontColor)
-        }
-        if (animations.NextAvailableAnimation(&indexAnim, 1))
-        {
-            animationState[indexAnim].StartingColor = frontColor;
-            animationState[indexAnim].EndingColor = RgbColor(0, 0, 0);
-            animationState[indexAnim].IndexPixel = frontPixel;
-
-            animations.StartAnimation(indexAnim, GyroPixelFadeDuration, FadeOutAnimUpdate);
-        }
-        */
     }
 }
 
@@ -448,27 +401,10 @@ void setup()
     server.on("/", handleRequest);
     server.begin();
     Serial.println("HTTP server started");
-    //currentStatus = IDLE;
     status = "IDLE";
-
-    // timeClient.begin();
-    // lastEvent = timeClient.getEpochTime();
 }
 
-// long int timeSpent()
-// {
-//     //  loadLastEvent();
-//     // timeClient.forceUpdate();
-//     _now = timeClient.getEpochTime();
-//   //  int timeSpent = _now - lastEvent;
-//     Serial.println("Time spent since last alarm (s): ");
-//     Serial.print(timeSpent);
-//     //lastEvent = timeClient.getEpochTime();
-//     return timeSpent;
-// }
-
-//uint lastNtpUpdate = 0;
-uint ntpDelay = 60000;
+uint updateDelay = 60000;
 uint lastElapsed = 0;
 
 uint currentHour = 0;
@@ -479,50 +415,18 @@ void loop()
     if (WiFi.status() == WL_CONNECTED) //Check WiFi connection status
     {
         unsigned long elapsed = millis();
-        if (lastElapsed == 0 || elapsed - lastElapsed > (ntpDelay))
+        if (lastElapsed == 0 || elapsed - lastElapsed > updateDelay)
         {
             Serial.print("Updating NTP");
             timeClient.update();
-            // unsigned long epochTime = timeClient.getEpochTime();
-            // time_t local, utc;
-            //utc = epochTime;
-
-            //            Serial.print(epochTime); // 29258
-
-            // lastNtpUpdate = epochTime * 1000;
             lastElapsed = elapsed;
-
             currentHour = timeClient.getHours();
             currentMinute = timeClient.getMinutes();
-
-            /*
-            Serial.print("");
-            Serial.println(timeClient.ge
-            tFormattedTime());
-            Serial.print("--");
-            Serial.println(timeClient.getHours());
-            Serial.print("--");
-            Serial.println(status);
-            Serial.print("--");
-            */
-
-            // if time to switch on, start anim during 1 hour
-            //int Myhour = hour(epochTime);
-
             if (status == "IDLE" && currentHour == 7 && currentMinute >= 30)
             {
                 status = "GYRO";
                 animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
             }
-
-            // Then convert the UTC UNIX timestamp to local time
-            //TimeChangeRule usEDT = {"EDT", Second, Sun, Mar, 2, -300}; //UTC - 5 hours - change this as needed
-            //TimeChangeRule usEST = {"EST", First, Sun, Nov, 2, -360};  //UTC - 6 hours - change this as needed
-            //Timezone usEast usEastern(usEDT, usEST);
-            //local = usEastern.toLocal(utc);
-
-            //1649353270
-            //1577902344
         }
     }
     else // attempt to connect to wifi again if disconnected
