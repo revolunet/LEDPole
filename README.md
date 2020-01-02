@@ -1,6 +1,6 @@
 # LEDPole
 
-Poteau composé de 16 bandeaux de 20 leds contrôlées individuellement via Arduino et WiFi.
+Poteau composé de 15 bandeaux de 16 leds (=240) contrôlées individuellement via Arduino et WiFi.
 
 Avec des exemples de code pour animer des bandeaux à base de LEDs WS8212b.
 
