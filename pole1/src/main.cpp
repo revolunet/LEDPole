@@ -472,6 +472,7 @@ uint ntpDelay = 60000;
 uint lastElapsed = 0;
 
 uint currentHour = 0;
+uint currentMinute = 0;
 
 void loop()
 {
@@ -492,10 +493,12 @@ void loop()
             lastElapsed = elapsed;
 
             currentHour = timeClient.getHours();
+            currentMinute = timeClient.getMinutes();
 
             /*
             Serial.print("");
-            Serial.println(timeClient.getFormattedTime());
+            Serial.println(timeClient.ge
+            tFormattedTime());
             Serial.print("--");
             Serial.println(timeClient.getHours());
             Serial.print("--");
@@ -506,7 +509,7 @@ void loop()
             // if time to switch on, start anim during 1 hour
             //int Myhour = hour(epochTime);
 
-            if (status == "IDLE" && currentHour == 7)
+            if (status == "IDLE" && currentHour == 7 && currentMinute >= 30)
             {
                 status = "GYRO";
                 animations.StartAnimation(0, GyroNextPixelMoveDuration, GyroLoopAnimUpdate);
