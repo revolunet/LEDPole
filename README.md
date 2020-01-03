@@ -6,7 +6,7 @@ Avec des exemples de code pour animer des bandeaux à base de LEDs WS8212b.
 
 👌 Développé avec l'[extension PlatformIO pour VSCode ](https://docs.platformio.org/en/latest/ide/vscode.html)
 
-<img src="LEDPole.jpg" />
+<img src="demo.gif" />
 
 ## Hardware
 
@@ -28,6 +28,8 @@ NTPClient@3.1.0
 Time@1.6
 TimeZone@1.2.4
 ```
+
+<img src="remote.jpg" />
 
 ## Faq
 
