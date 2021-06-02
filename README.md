@@ -2,7 +2,7 @@
 
 Poteau composé de 15 bandeaux de 16 leds (=240) contrôlées individuellement via Arduino et WiFi.
 
-Avec des exemples de code pour animer des bandeaux à base de LEDs WS8212b.
+Avec des exemples de code pour animer des bandeaux à base de LEDs WS2812b.
 
 👌 Développé avec l'[extension PlatformIO pour VSCode ](https://docs.platformio.org/en/latest/ide/vscode.html)
 
